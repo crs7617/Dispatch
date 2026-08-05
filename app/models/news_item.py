@@ -4,7 +4,7 @@ app.models.news_item
 MVP Pydantic model for a NewsItem in Dispatch.
 
 This file implements the simplified, YAGNI-friendly schema you requested for the
-first month of development. Keep the model intentionally small so ingestion,
+first step of development. Keep the model intentionally small so ingestion,
 storage and UI work can move forward quickly. Extra fields (embeddings,
 popularity, dedup ids, raw_payload, etc.) are introduced only when we need them.
 
