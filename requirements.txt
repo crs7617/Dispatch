@@ -1,2 +1,3 @@
 httpx
 feedparser
+sentence-transformers
