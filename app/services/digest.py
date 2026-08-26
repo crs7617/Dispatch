@@ -9,6 +9,7 @@ from app.config.personalization import UserProjectContext
 from app.models.digest import Digest
 from app.models.news_item import NewsItem
 from app.services.deduplication import DeduplicationService
+from app.services.embeddings import LocalSentenceEmbeddingProvider
 from app.services.relevance import RelevanceRankingService
 from app.services.summarization import SummarizationService
 
@@ -31,7 +32,7 @@ class DigestOrchestrator:
         self._rss_collector = rss_collector
         self._github_collector = github_collector
         self._deduplication_service = deduplication_service or DeduplicationService(
-            embedding_provider=lambda texts: [[1.0, 0.0] for _ in texts]
+            embedding_provider=LocalSentenceEmbeddingProvider()
         )
         self._relevance_service = relevance_service or RelevanceRankingService()
         self._summarization_service = summarization_service or SummarizationService(

@@ -2,3 +2,4 @@ httpx
 feedparser
 sentence-transformers
 tzdata
+python-dotenv
