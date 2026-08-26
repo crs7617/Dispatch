@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import builtins
 from typing import Any
-from unittest import TestCase
+from unittest import TestCase, mock
 
-from app.services.embeddings import LocalSentenceEmbeddingProvider
+from app.services.embeddings import LocalSentenceEmbeddingProvider, _load_sentence_transformer
 
 
 class FakeEncodedEmbeddings:
@@ -69,3 +70,18 @@ class LocalSentenceEmbeddingProviderTests(TestCase):
                 ),
             ],
         )
+
+    def test_missing_sentence_transformers_includes_install_hint(self) -> None:
+        real_import = builtins.__import__
+
+        def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+            if name == "sentence_transformers":
+                raise ModuleNotFoundError("No module named 'sentence_transformers'")
+            return real_import(name, *args, **kwargs)
+
+        with mock.patch("builtins.__import__", side_effect=fake_import):
+            with self.assertRaisesRegex(
+                ModuleNotFoundError,
+                r"python -m pip install sentence-transformers",
+            ):
+                _load_sentence_transformer("test-model")

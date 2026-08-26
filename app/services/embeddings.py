@@ -11,7 +11,13 @@ DEFAULT_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
 def _load_sentence_transformer(model_name: str) -> Any:
     """Load a sentence-transformers model only when it is first needed."""
-    from sentence_transformers import SentenceTransformer
+    try:
+        from sentence_transformers import SentenceTransformer
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "sentence-transformers is required for Dispatch local embeddings. "
+            "Install it with: python -m pip install sentence-transformers"
+        ) from exc
 
     return SentenceTransformer(model_name)
 
