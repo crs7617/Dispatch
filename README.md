@@ -32,7 +32,13 @@ export DISPATCH_TIMEZONE="UTC"
 
 ## Scheduled run
 
-Run the scheduler loop in the configured timezone and time:
+Run a single dispatch immediately from the project root for unattended Windows Task Scheduler jobs:
+
+```bash
+python -m app.scheduler --run-now
+```
+
+For a local scheduler loop in the configured timezone and time:
 
 ```bash
 DISPATCH_TELEGRAM_BOT_TOKEN="..." \
@@ -40,12 +46,6 @@ DISPATCH_TELEGRAM_CHAT_ID="..." \
 DISPATCH_SCHEDULE_TIME="09:00" \
 DISPATCH_TIMEZONE="UTC" \
 python -m app.scheduler
-```
-
-To trigger the schedule immediately for a test run without waiting for the next time window:
-
-```bash
-python -m app.scheduler --run-now
 ```
 
 The scheduler uses a daily local time and a timezone-aware check to avoid overlaps. Failed broadcasts are logged but do not stop future runs.
