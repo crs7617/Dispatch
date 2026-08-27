@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from unittest import TestCase, mock
 
 import httpx
@@ -148,3 +147,134 @@ class SummarizationServiceTests(TestCase):
         self.assertEqual(fake_http.calls[0][0], "https://example.com/api/chat/completions")
         self.assertEqual(fake_http.calls[0][1]["model"], "test-model")
         self.assertEqual(fake_http.calls[0][1]["messages"][0]["content"], "Summarize this article")
+
+    def test_provider_parses_gemini_like_message_content(self) -> None:
+        class FakeResponse:
+            def __init__(self, payload: dict[str, object]) -> None:
+                self._payload = payload
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict[str, object]:
+                return self._payload
+
+        fake_http = httpx.Client()
+        payload = {
+            "choices": [
+                {
+                    "message": {
+                        "content": [
+                            {"type": "text", "text": "Real summary from Gemini."},
+                        ]
+                    }
+                }
+            ]
+        }
+
+        provider = OpenAICompatibleLLMProvider(
+            api_key="test-key",
+            base_url="https://example.com/api",
+            model_name="gemini-3.1-flash-lite",
+            http_client=type(
+                "FakeHTTPClient",
+                (),
+                {
+                    "post": lambda self, url, headers, json: FakeResponse(payload),
+                },
+            )(),
+        )
+
+        summary = provider.summarize("Do not return the prompt text as the summary.")
+        self.assertEqual(summary, "Real summary from Gemini.")
+        self.assertNotIn("Do not return the prompt text as the summary.", summary)
+
+    def test_prompt_instructions_require_distinct_summary_and_why_it_matters(self) -> None:
+        item = NewsItem(
+            source=Source.RSS,
+            source_id="brief-1",
+            title="Local startup raises funding",
+            url="https://example.com/funding",
+            content="The startup says it raised $2 million to expand operations.",
+        )
+        provider = FakeLLMProvider("Summary: The startup raised $2 million to expand operations.\nWhy it matters: The source does not provide enough context to explain why this matters.")
+
+        SummarizationService(provider).summarize(item)
+
+        prompt = provider.calls[0]
+        self.assertIn("Summary: 1-3 concise sentences", prompt)
+        self.assertIn("Why it matters:", prompt)
+        self.assertIn("The source does not provide enough context", prompt)
+
+    def test_provider_strips_summary_and_why_it_matters_sections(self) -> None:
+        class FakeResponse:
+            def __init__(self, payload: dict[str, object]) -> None:
+                self._payload = payload
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict[str, object]:
+                return self._payload
+
+        payload = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "Summary: The startup raised $2 million to expand operations.\nWhy it matters: The source does not provide enough context to explain why this matters."
+                    }
+                }
+            ]
+        }
+
+        provider = OpenAICompatibleLLMProvider(
+            api_key="test-key",
+            base_url="https://example.com/api",
+            model_name="gemini-3.1-flash-lite",
+            http_client=type(
+                "FakeHTTPClient",
+                (),
+                {
+                    "post": lambda self, url, headers, json: FakeResponse(payload),
+                },
+            )(),
+        )
+
+        summary = provider.summarize("Summarize the startup funding item.")
+        self.assertEqual(summary, "The startup raised $2 million to expand operations.")
+
+    def test_prompt_echo_is_rejected(self) -> None:
+        class FakeResponse:
+            def __init__(self, payload: dict[str, object]) -> None:
+                self._payload = payload
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict[str, object]:
+                return self._payload
+
+        prompt = "Summarize this article."
+        payload = {"choices": [{"message": {"content": prompt}}]}
+
+        provider = OpenAICompatibleLLMProvider(
+            api_key="test-key",
+            base_url="https://example.com/api",
+            model_name="gemini-3.1-flash-lite",
+            http_client=type(
+                "FakeHTTPClient",
+                (),
+                {
+                    "post": lambda self, url, headers, json: FakeResponse(payload),
+                },
+            )(),
+        )
+
+        with self.assertRaisesRegex(ValueError, "prompt instead of a summary"):
+            provider.summarize(prompt)
+
+    def test_missing_llm_api_key_raises_value_error(self) -> None:
+        with mock.patch.dict("os.environ", {"DISPATCH_LLM_API_KEY": "   "}, clear=True):
+            provider = OpenAICompatibleLLMProvider()
+            with self.assertRaisesRegex(ValueError, "DISPATCH_LLM_API_KEY must be set"):
+                provider.summarize("Summarize this article")

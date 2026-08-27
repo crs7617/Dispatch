@@ -11,7 +11,7 @@ from app.models.news_item import NewsItem
 from app.services.deduplication import DeduplicationService
 from app.services.embeddings import LocalSentenceEmbeddingProvider
 from app.services.relevance import RelevanceRankingService
-from app.services.summarization import SummarizationService
+from app.services.summarization import OpenAICompatibleLLMProvider, SummarizationService
 
 
 class DigestOrchestrator:
@@ -36,7 +36,7 @@ class DigestOrchestrator:
         )
         self._relevance_service = relevance_service or RelevanceRankingService()
         self._summarization_service = summarization_service or SummarizationService(
-            provider=FakeSummarizationProvider()
+            provider=OpenAICompatibleLLMProvider()
         )
         self._story_limit = story_limit
 
@@ -104,11 +104,4 @@ class DigestOrchestrator:
         )
 
 
-class FakeSummarizationProvider:
-    """Simple summarization provider used as a default when no provider is injected."""
-
-    def summarize(self, prompt: str) -> str:
-        return prompt.strip() or "Summary unavailable."
-
-
-__all__ = ["DigestOrchestrator", "FakeSummarizationProvider"]
+__all__ = ["DigestOrchestrator"]

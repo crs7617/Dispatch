@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import os
+import re
 from typing import Any, Protocol
 
 import httpx
@@ -22,10 +22,10 @@ class SummarizationService:
     """Summarize a NewsItem using an injected LLM provider."""
 
     SYSTEM_PROMPT = (
-        "You are a grounded news summarizer. Summarize only the facts explicitly "
-        "present in the supplied source material. Do not invent facts, dates, "
-        "quotes, releases, numbers, or claims. If the item is brief or sparse, "
-        "say so plainly without adding unsupported details."
+        "You are a grounded news summarizer. Base every sentence on the supplied "
+        "source material only. Do not invent facts, numbers, dates, motives, "
+        "consequences, or context. Keep the output concise and useful for a "
+        "Telegram news digest."
     )
 
     def __init__(self, provider: LLMProvider) -> None:
@@ -71,13 +71,26 @@ class SummarizationService:
             f"{self.SYSTEM_PROMPT}\n\n"
             "Source material:\n"
             f"{chr(10).join(sections)}\n\n"
-            "Return a brief, factual summary in 1-3 sentences."
+            "Return a brief, factual summary and a separate Why it matters explanation.\n"
+            "Return exactly two labeled lines:\n"
+            "Summary: 1-3 concise sentences grounded only in the source. Avoid repeating the title.\n"
+            "Why it matters: Give only additional context or significance supported by the source. "
+            "Never simply repeat the Summary. If the source does not provide enough context, say: "
+            "'The source does not provide enough context to explain why this matters.'\n\n"
+            "Do not invent facts, do not repeat the same sentence in both sections, and do not echo the prompt."
         )
 
     @staticmethod
     def _normalize_summary(raw_summary: str) -> str:
         """Trim whitespace and reject empty or placeholder responses."""
         summary = (raw_summary or "").strip()
+        if not summary:
+            raise ValueError("LLM provider returned an empty summary")
+
+        summary = re.sub(r"(?is)^\s*summary\s*:\s*", "", summary)
+        if re.search(r"(?is)\bwhy it matters\s*:", summary):
+            summary = re.split(r"(?is)\bwhy it matters\s*:", summary, maxsplit=1)[0].strip()
+        summary = summary.strip(" -\t\r\n")
         if not summary:
             raise ValueError("LLM provider returned an empty summary")
         return summary
@@ -94,10 +107,63 @@ class OpenAICompatibleLLMProvider:
         model_name: str | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
-        self.api_key = api_key or os.getenv("DISPATCH_LLM_API_KEY")
-        self.base_url = (base_url or os.getenv("DISPATCH_LLM_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
-        self.model_name = model_name or os.getenv("DISPATCH_LLM_MODEL") or "gpt-4o-mini"
+        raw_key = api_key if api_key is not None else os.getenv("DISPATCH_LLM_API_KEY")
+        self.api_key = raw_key.strip() if isinstance(raw_key, str) else raw_key
+        base_url_value = base_url if base_url is not None else os.getenv("DISPATCH_LLM_BASE_URL")
+        self.base_url = (base_url_value or "https://api.openai.com/v1").rstrip("/")
+        model_name_value = model_name if model_name is not None else os.getenv("DISPATCH_LLM_MODEL")
+        self.model_name = model_name_value or "gpt-4o-mini"
         self._http_client = http_client or httpx.Client(timeout=10.0)
+
+    @staticmethod
+    def _extract_text(value: Any) -> str | None:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned or None
+        if isinstance(value, list):
+            parts: list[str] = []
+            for item in value:
+                if isinstance(item, str):
+                    item_text = item.strip()
+                    if item_text:
+                        parts.append(item_text)
+                elif isinstance(item, dict):
+                    text = OpenAICompatibleLLMProvider._extract_text(item.get("text"))
+                    if text:
+                        parts.append(text)
+                    else:
+                        nested = OpenAICompatibleLLMProvider._extract_text(item.get("content"))
+                        if nested:
+                            parts.append(nested)
+            combined = " ".join(parts).strip()
+            return combined or None
+        if isinstance(value, dict):
+            for key in ("text", "content"):
+                extracted = OpenAICompatibleLLMProvider._extract_text(value.get(key))
+                if extracted:
+                    return extracted
+            nested_parts = value.get("parts")
+            if nested_parts is not None:
+                return OpenAICompatibleLLMProvider._extract_text(nested_parts)
+        return None
+
+    @staticmethod
+    def _clean_generated_summary(raw_summary: str, *, prompt: str | None = None) -> str:
+        """Normalize model output and reject prompt echoes."""
+        summary = (raw_summary or "").strip()
+        if not summary:
+            raise ValueError("LLM provider returned an empty summary")
+
+        content = summary
+        if re.search(r"(?is)\bwhy it matters\s*:", content):
+            content = re.split(r"(?is)\bwhy it matters\s*:", content, maxsplit=1)[0].strip()
+        content = re.sub(r"(?is)^\s*summary\s*:\s*", "", content).strip(" -\t\r\n")
+
+        if not content:
+            raise ValueError("LLM provider returned an empty summary")
+        if prompt and prompt.strip() and content == prompt.strip():
+            raise ValueError("LLM provider returned the prompt instead of a summary")
+        return content
 
     def summarize(self, prompt: str) -> str:
         """Ask an OpenAI-compatible endpoint for a grounded summary."""
@@ -130,14 +196,11 @@ class OpenAICompatibleLLMProvider:
             raise ValueError("LLM provider returned an invalid choice")
 
         message = first_choice.get("message")
-        if not isinstance(message, dict):
-            raise ValueError("LLM provider returned no message payload")
-
-        content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
+        content = self._extract_text(message)
+        if not content:
             raise ValueError("LLM provider returned an empty summary")
 
-        return content.strip()
+        return self._clean_generated_summary(content, prompt=prompt)
 
 
 __all__ = [
