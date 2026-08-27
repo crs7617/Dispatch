@@ -4,7 +4,7 @@ An AI-powered news aggregation pipeline that collects technical content from mul
 
 ## Architecture
 
-![Dispatch Architecture](docs/architecture.png)
+![Dispatch Architecture](docs/dispatch_architecture.png)
 
 Sources → Collectors → NewsItem → Deduplication → Relevance Ranking → LLM Summarization → Digest → Telegram
 
