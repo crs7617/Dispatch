@@ -1,34 +1,27 @@
 # Dispatch
 
-Dispatch is a personal technology news digest that collects stories from multiple sources, removes duplicates, ranks them by relevance, summarizes the best items, and sends the daily digest to Telegram.
+An AI-powered news aggregation pipeline that collects technical content from multiple sources, normalizes it, removes semantic duplicates, ranks it by relevance, summarizes it with an LLM, and delivers the resulting digest through Telegram.
 
 ## Architecture
 
-[ARCHITECTURE DIAGRAM]
+![Dispatch Architecture](docs/architecture.png)
 
-Sources → Collect → Normalize → Deduplicate → Rank → Summarize → Telegram
+Sources → Collectors → NewsItem → Deduplication → Relevance Ranking → LLM Summarization → Digest → Telegram
 
-## Features
-
-- Hacker News
-- RSS/Atom feeds
-- GitHub releases
-- Semantic deduplication
-- Personalized relevance ranking
-- LLM summarization
-- Telegram delivery
-- Scheduling
+Source-specific clients and collectors normalize heterogeneous external data into a shared domain model before downstream processing.
 
 ## Stack
 
 - Python
+- Pydantic
 - httpx
 - feedparser
 - sentence-transformers
+- all-MiniLM-L6-v2
 - python-dotenv
-- tzdata
 - Telegram Bot API
 - OpenAI-compatible LLM API
+- unittest
 
 ## Setup
 
@@ -36,25 +29,14 @@ Sources → Collect → Normalize → Deduplicate → Rank → Summarize → Tel
 git clone <repo-url>
 cd Dispatch
 python -m venv .venv
-# macOS/Linux
-source .venv/bin/activate
 # Windows
 .venv\Scripts\activate
+# macOS/Linux
+source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Create a `.env` file in the project root:
-
-```env
-DISPATCH_TELEGRAM_BOT_TOKEN="..."
-DISPATCH_TELEGRAM_CHAT_ID="..."
-DISPATCH_RSS_FEEDS="https://example.com/feed.xml|Tech Feed;https://example.org/news.xml|More News"
-DISPATCH_GITHUB_REPOS="owner/repo,owner/other-repo"
-DISPATCH_LLM_API_KEY="..."
-DISPATCH_LLM_BASE_URL="https://api.openai.com/v1"
-DISPATCH_SCHEDULE_TIME="09:00"
-DISPATCH_TIMEZONE="UTC"
-```
+Create a `.env` file in the project root and configure the required Telegram, LLM, RSS, GitHub, timezone, and scheduling settings. Never commit `.env` or API credentials.
 
 Run Dispatch:
 
@@ -70,18 +52,22 @@ python -m unittest discover -s tests -q
 
 ## Scheduling
 
-Dispatch can be scheduled with the OS scheduler. Windows Task Scheduler, Linux cron/systemd, and macOS launchd/cron can all run the same command at a fixed time.
+Dispatch can be invoked manually with:
 
-## Why Dispatch?
+```bash
+python -m app.scheduler --run-now
+```
 
-This project was built as a hands-on way to learn backend engineering and AI engineering by wiring together real data sources, ranking logic, summarization, and delivery into a working end-to-end system.
+It can also be scheduled externally with Windows Task Scheduler, Linux cron/systemd timers, or macOS launchd/cron.
 
 ## Status
 
-The pipeline runs end-to-end and the repository test suite passes.
+The current v0 pipeline works end-to-end: Collection → Deduplication → Relevance Ranking → LLM Summarization → Digest Assembly → Telegram Delivery.
 
-## Future
+## Roadmap
 
-- Add more source adapters.
-- Add digest history and review workflows.
-- Improve ranking and summarization tuning.
+- [ ] Add more source adapters
+- [ ] Add persistent digest history
+- [ ] Improve relevance ranking
+- [ ] Improve summarization and feedback
+- [ ] Explore multi-user support
